@@ -11,8 +11,6 @@
 #include <mutex>
 #include <queue>
 
-namespace real
-{
     struct command_block
     {
         std::vector<std::string> command;
@@ -49,23 +47,28 @@ namespace real
                 condition.wait(lck);
             }
             std::cout << "logger - start" << std::endl;
-            if(!isActDyn) data = static_block.command;
-            if(isActDyn) data = dynamic_block.command;
-            std::cout << "bulk: " << std::endl;
-            for (auto& v : data)
-            {
-                std::cout << v << '!!!!';
+            if(!isActDyn) {
+                size_t count = static_block.count;
+                for (size_t i = 0; i < count; i++)
+                {
+                    data[i] = static_block.command[i];
+                }
             }
-            /*std::cout << "bulk: " << '/n';
-            std::cout << static_block.command.data() << data.size() << '/n';
-            std::cout << dynamic_block.command.size() << data.size() << '/n';
-            for(size_t i = 0; i < data.size(); ++i)
+            if(isActDyn) {
+                size_t count = dynamic_block.count;
+                for (size_t i = 0; i < count; i++)
+                {
+                    data[i] = dynamic_block.command[i];
+                }
+            }
+            std::cout << "bulk: " << std::endl;
+            for (auto v : data)
             {
-                std::cout << data.at(i);
-                if (i < data.size() - 1) std::cout << ", ";
-            }*/
+                std::cout << v << ", ";
+            }
             std::cout << std::endl;
             data.clear();
+            finished = false;
         }
         std::cout << "logger - finished!" << std::endl;
     }
@@ -150,10 +153,9 @@ namespace real
         produserThread.join();
         loggerThread.join();
     }
-}   // namespace real
 
 int main()
 {
-    real::test_condition();
+    test_condition();
     return 0;
 }
