@@ -25,6 +25,8 @@
     command_block static_block;
     command_block dynamic_block;
     std::vector<std::string> data;
+    std::string file_name;
+    size_t count_com;
     std::string text;
 
     bool isActDyn = false;
@@ -51,6 +53,36 @@
         std::cout << std::endl;
     }
 
+    void replace_data(command_block &vector)
+    {
+        data = vector.command;
+        file_name = vector.file_name;
+        count_com = vector.count;
+    }
+
+    std::string GetFileName()
+    {
+        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
+        file_time.time_since_epoch()).count();
+        std::stringstream filename;
+        filename << "bulk" << seconds << ".log"; // log in thread
+        return filename.str();
+    }
+
+    void print_in_file(std::vector<std::string> data, std::string name, size_t count)
+    {
+        std::ofstream out;
+        out.open(name);
+        if(out.is_open()) {
+            for(size_t i = 0; i < count; ++i)
+            {
+                out << data[i];
+                if (i < count - 1) out << ", ";
+            }
+            out.close();
+        }
+    }
+
     void logger()
     {
         std::unique_lock<std::mutex> lck{conditionMutex};
@@ -61,6 +93,7 @@
                 condition.wait(lck);
             }
             print_in_log(data);
+            print_in_file(data, file_name, count_com);
             data.clear();
             finished = false;
         }
@@ -74,16 +107,19 @@
             {
                 std::lock_guard<std::mutex> guard{conditionMutex};
                 {
+                    file_time = std::chrono::system_clock::now();
                     std::cin >> text;
                     if(!isActDyn)                                   // static block
                     {
                         if(text != "EOF" && text != "{")            // text != "EOF" && text != "{"
                         {
+                            if (!static_block.count)
+                                static_block.file_name = GetFileName();
                             static_block.command.emplace_back(text);
                             static_block.count = static_block.command.size();
                             if(static_block.count == max_size)
                             {
-                                data = static_block.command;
+                                replace_data(static_block);
                                 Synhronize(static_block);
                                 condition.notify_one();
                                 finished = true;
@@ -92,7 +128,7 @@
                         if(text == "EOF" || text == "{")            // text == "EOF" || text == "{"
                         {
                             static_block.count = static_block.command.size();
-                            data = static_block.command;
+                            replace_data(static_block);
                             Synhronize(static_block);
                             if(static_block.count)
                             {
@@ -110,6 +146,8 @@
                     {
                         if(text != "{" && text != "}" && text != "EOF")
                         {
+                            if (!dynamic_block.count)
+                                dynamic_block.file_name = GetFileName();
                             dynamic_block.command.emplace_back(text);
                             dynamic_block.count = dynamic_block.command.size();
                         }
@@ -119,7 +157,7 @@
                             dynamic_block.command.clear();
                         if (dynamicCount == 0)                      // end of dynamic block
                         {
-                            data = dynamic_block.command;
+                            replace_data(dynamic_block);
                             Synhronize(dynamic_block);
                             condition.notify_one();
                             isActDyn = false;
