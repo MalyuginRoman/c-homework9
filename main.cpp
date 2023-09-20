@@ -1,89 +1,4 @@
-#include <iostream>
-#include <unistd.h>
-#include <sstream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <thread>
-#include <condition_variable>
-#include <future>
-#include <mutex>
-#include <queue>
-
-#include "lib.h"
-
-struct command_block
-{
-    std::vector<std::string> command;
-    size_t count = 0;
-    std::string file_name;
-};
-
-std::atomic<bool> finished{false};
-std::mutex conditionMutex;
-std::condition_variable condition;
-
-command_block static_block;
-command_block dynamic_block;
-std::vector<std::string> data;
-std::string file_name;
-size_t count_com;
-std::string text;
-
-bool isActDyn = false;
-std::chrono::system_clock::time_point file_time;
-int dynamicCount = 0;
-
-void Synhronize(command_block &vector)
-{
-    vector.command.clear();
-    vector.count = vector.command.size();
-}
-
-void print_in_log(std::vector<std::string> data)
-{
-    std::cout << "bulk: ";
-    size_t i = 0;
-    size_t count = data.size();
-    for (auto v : data)
-    {
-        i++;
-        std::cout << v;
-        if(i != count) std::cout << ", ";
-    }
-    std::cout << std::endl;
-}
-
-void replace_data(command_block &vector)
-{
-    data = vector.command;
-    file_name = vector.file_name;
-    count_com = vector.count;
-}
-
-std::string GetFileName()
-{
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
-    file_time.time_since_epoch()).count();
-    std::stringstream filename;
-    filename << "bulk" << seconds << ".log"; // log in thread
-    return filename.str();
-}
-
-void print_in_file(std::vector<std::string> data, std::string name, size_t count)
-{
-    std::ofstream out;
-    out.open(name);
-    if(out.is_open()) {
-        for(size_t i = 0; i < count; ++i)
-        {
-            out << data[i];
-            if (i < count - 1) out << ", ";
-        }
-        out.close();
-    }
-}
+#include "dop.h"
 
 void logger()
 {
@@ -95,9 +10,27 @@ void logger()
             condition.wait(lck);
         }
         print_in_log(data);
-        print_in_file(data, file_name, count_com);
-        data.clear();
-        finished = false;
+        isLogged = true;
+        clear_data(data);
+        if(isLogged && isPrinted) reset_bool();
+        else condition.notify_one();
+    }
+}
+
+void printer()
+{
+    std::unique_lock<std::mutex> lck{conditionMutex};
+    while(!finished)
+    {
+        while(data_for_print.empty() && !finished)
+        {
+            condition.wait(lck);
+        }
+        print_in_file(data_for_print, file_name, count_com);
+        isPrinted = true;
+        clear_data(data_for_print);
+        if(isLogged && isPrinted) reset_bool();
+        else condition.notify_one();
     }
 }
 
@@ -169,6 +102,7 @@ void producer()
             }
         }
         condition.notify_one();
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     condition.notify_one();
 }
@@ -178,8 +112,10 @@ void test_condition()
     std::cout << "Start programm" << std::endl;
     std::thread log{logger};
     std::thread main{producer};
+    std::thread file1{printer};
     main.join();
     log.join();
+    file1.join();
 }
 
 int main()
