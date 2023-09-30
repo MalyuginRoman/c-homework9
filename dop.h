@@ -19,8 +19,12 @@ struct command_block
 };
 
 std::atomic<bool> finished{false};
-std::mutex conditionMutex;
-std::condition_variable condition;
+std::mutex conditionMutex_Log;
+std::condition_variable condition_Log;
+std::mutex conditionMutex_Print_s;
+std::condition_variable condition_Print_s;
+std::mutex conditionMutex_Print_d;
+std::condition_variable condition_Print_d;
 
 command_block static_block;
 command_block dynamic_block;
@@ -69,8 +73,18 @@ std::string GetFileName()
     auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
     file_time.time_since_epoch()).count();
     std::stringstream filename;
-    filename << "bulk" << seconds << ".log"; // log in thread
+    std::string metka;
+    filename << "bulk" << seconds; // << ".log"; // log in thread
     return filename.str();
+}
+
+std::string GetThreadID()
+{
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+    int thread_id = std::stoi(ss.str());
+    std::string new_name = std::to_string(thread_id);
+    return new_name;
 }
 
 void print_in_file(std::vector<std::string> data, std::string name, size_t count)
@@ -91,10 +105,4 @@ void clear_data(std::vector<std::string> &data)
 {
     data.clear();
     finished = false;
-}
-
-void reset_bool()
-{
-    isLogged = false;
-    isPrinted = false;
 }
