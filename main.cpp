@@ -2,35 +2,50 @@
 
 void logger()
 {
-    std::unique_lock<std::mutex> lck{conditionMutex};
+    std::unique_lock<std::mutex> lck{conditionMutex_Log};
     while(!finished)
     {
         while(data.empty() && !finished)
         {
-            condition.wait(lck);
+            condition_Log.wait(lck);
         }
         print_in_log(data);
         isLogged = true;
         clear_data(data);
-        if(isLogged && isPrinted) reset_bool();
-        else condition.notify_one();
     }
 }
 
-void printer()
+void printer_static()
 {
-    std::unique_lock<std::mutex> lck{conditionMutex};
+    std::unique_lock<std::mutex> lck{conditionMutex_Print_s};
     while(!finished)
     {
         while(data_for_print.empty() && !finished)
         {
-            condition.wait(lck);
+            condition_Print_s.wait(lck);
         }
-        print_in_file(data_for_print, file_name, count_com);
+        std::string thread_id = GetThreadID();
+        std::string new_name = file_name + "_" + thread_id + ".log";
+        print_in_file(data_for_print, new_name, count_com);
         isPrinted = true;
         clear_data(data_for_print);
-        if(isLogged && isPrinted) reset_bool();
-        else condition.notify_one();
+    }
+}
+
+void printer_dynamic()
+{
+    std::unique_lock<std::mutex> lck{conditionMutex_Print_d};
+    while(!finished)
+    {
+        while(data_for_print.empty() && !finished)
+        {
+            condition_Print_d.wait(lck);
+        }
+        std::string thread_id = GetThreadID();
+        std::string new_name = file_name + "_" + thread_id + ".log";
+        print_in_file(data_for_print, new_name, count_com);
+        isPrinted = true;
+        clear_data(data_for_print);
     }
 }
 
@@ -40,7 +55,9 @@ void producer()
     while(!finished)
     {
         {
-            std::lock_guard<std::mutex> guard{conditionMutex};
+            std::lock_guard<std::mutex> guard1{conditionMutex_Log};
+            std::lock_guard<std::mutex> guard2{conditionMutex_Print_s};
+            std::lock_guard<std::mutex> guard3{conditionMutex_Print_d};
             {
                 file_time = std::chrono::system_clock::now();
                 std::cin >> text;
@@ -56,7 +73,8 @@ void producer()
                         {
                             replace_data(static_block);
                             Synhronize(static_block);
-                            condition.notify_one();
+                            condition_Log.notify_one();
+                            condition_Print_s.notify_one();
                             finished = true;
                         }
                     }
@@ -67,7 +85,8 @@ void producer()
                         Synhronize(static_block);
                         if(static_block.count)
                         {
-                            condition.notify_one();
+                            condition_Log.notify_one();
+                            condition_Print_s.notify_one();
                             finished = true;
                         }
                         if(text == "{")
@@ -94,17 +113,19 @@ void producer()
                     {
                         replace_data(dynamic_block);
                         Synhronize(dynamic_block);
-                        condition.notify_one();
+                        condition_Log.notify_one();
+                        condition_Print_d.notify_one();
                         isActDyn = false;
                         finished = true;
                     }
                 }
             }
         }
-        condition.notify_one();
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        condition_Log.notify_one();
+        condition_Print_s.notify_one();
     }
-    condition.notify_one();
+    condition_Log.notify_one();
+    condition_Print_s.notify_one();
 }
 
 void test_condition()
@@ -112,10 +133,12 @@ void test_condition()
     std::cout << "Start programm" << std::endl;
     std::thread log{logger};
     std::thread main{producer};
-    std::thread file1{printer};
+    std::thread file1{printer_static};
+    std::thread file2{printer_dynamic};
     main.join();
     log.join();
     file1.join();
+    file2.join();
 }
 
 int main()
